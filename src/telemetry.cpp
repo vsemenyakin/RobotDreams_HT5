@@ -159,13 +159,76 @@ bool validate_frames(const Frame frames[], int frame_count) {
         return false;
     }
 
+    //timestamp_ms check
     long last_time_stamp = frames[0].timestamp_ms;
     for (int i = 1; i < frame_count; ++i) {
         const long current_time_stamp = frames[i].timestamp_ms;
-        
-        if (last_time_stamp >= current_time_stamp) {
+
+        const bool is_valid_time_stamp = (last_time_stamp < current_time_stamp);
+        if (!is_valid_time_stamp) {
             std::cerr << "Error: Time stamp of frame with index " << i << " is invalid:" <<
             " less then of previous frame" << std::endl;
+            return false;
+        }
+    }
+
+    //seq check
+    int last_seq = frames[0].seq;
+    for (int i = 1; i < frame_count; ++i) {
+        const int current_seq = frames[i].seq;
+
+        const bool is_valid_seq = (current_seq == last_seq + 1);
+        if (!is_valid_seq) {
+            std::cerr << "Error: Sequence number of frame with index " << i <<
+               " is not increased by 1" << std::endl;
+            return false;
+        }
+    }
+
+    //voltage_v check
+    for (int i = 0; i < frame_count; ++i) {
+        const double voltage_v = frames[i].voltage_v;
+
+        const bool is_valid_voltage = (voltage_v >= 0.f);
+        if (!is_valid_voltage) {
+            std::cerr << "Error: Voltage value of frame with index " << i <<
+               " is less then zero" << std::endl;
+            return false;
+        }
+    }
+
+    //temperature_c check
+    for (int i = 0; i < frame_count; ++i) {
+        const double temperature_c = frames[i].temperature_c;
+        
+        const bool is_valid_temperature = (temperature_c >= -40.f) && (temperature_c <= 120.f);
+        if (!is_valid_temperature) {
+            std::cerr << "Error: Temperature value of frame with index " << i <<
+               " is out of range [-40, 120]" << std::endl;
+            return false;
+        }
+    }
+
+    //gps_fix check
+    for (int i = 0; i < frame_count; ++i) {
+        const int gps_fix = frames[i].gps_fix;
+
+        const bool is_valid_gps_fix = (gps_fix == 0) || (gps_fix == 1);
+        if (!is_valid_gps_fix) {
+            std::cerr << "Error: GPS fix value of frame with index " << i <<
+               " is not equals to 0 or 1" << std::endl;
+            return false;
+        }
+    }
+
+    //satellites check
+    for (int i = 0; i < frame_count; ++i) {
+        const int satellites = frames[i].satellites;
+        
+        const bool is_valid_satellites = (satellites >= 0);
+        if (!is_valid_satellites) {
+            std::cerr << "Error: Satellites value of frame with index " << i <<
+               " is less then zero" << std::endl;
             return false;
         }
     }
