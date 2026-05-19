@@ -167,9 +167,11 @@ bool validate_frames(const Frame frames[], int frame_count) {
         const bool is_valid_time_stamp = (last_time_stamp < current_time_stamp);
         if (!is_valid_time_stamp) {
             std::cerr << "Error: Time stamp of frame with index " << i << " is invalid:" <<
-            " less then of previous frame" << std::endl;
+            " less or equal than previous frame" << std::endl;
             return false;
         }
+
+        last_time_stamp = current_time_stamp;
     }
 
     //seq check
@@ -183,6 +185,8 @@ bool validate_frames(const Frame frames[], int frame_count) {
                " is not increased by 1" << std::endl;
             return false;
         }
+
+        last_seq = current_seq;
     }
 
     //voltage_v check
