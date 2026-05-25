@@ -38,45 +38,82 @@ int split_line(char line[], char* fields[], int max_fields) {
     return count;
 }
 
-long parse_long(const char* text) {
+template<typename Type>
+std::optional<Type> parse(const char* text);
+
+template<>
+std::optional<long> parse<long>(const char* text) {
     char* end = nullptr;
     const long value = std::strtol(text, &end, 10);
 
     if (end == text) {
-        std::abort();
+        return { };
     }
 
-    return value;
+    if (*end != '\0') {
+        return { };
+    }
+
+    return { value };
 }
 
-int parse_int(const char* text) {
-    return static_cast<int>(parse_long(text));
+template<>
+std::optional<int> parse<int>(const char* text) {
+    const std::optional<long> long_parse_result = parse<long>(text);
+    return long_parse_result.has_value() ?
+        std::optional<int>{ static_cast<int>(long_parse_result.value()) } :
+        std::optional<int>{ };
 }
 
-double parse_double(const char* text) {
+template<>
+std::optional<double> parse<double>(const char* text) {
     char* end = nullptr;
     const double value = std::strtod(text, &end);
 
     if (end == text) {
-        std::abort();
+        return { };
     }
 
-    return value;
+    if (*end != '\0') {
+        return { };
+    }
+
+    return { value };
 }
 
-Frame parse_frame(char line[]) {
+#define ParseFrameField(M_FrameVarName, M_FieldName, M_FieldStringValue)                        \
+{                                                                                               \
+    using FieldType = decltype(M_FrameVarName.M_FieldName);                                     \
+    const std::optional<FieldType> parse_result = parse<FieldType>(M_FieldStringValue);         \
+    if (!parse_result.has_value()) {                                                            \
+        std::cerr << "Error: Frame data contains not number value for "                         \
+                << #M_FieldName << std::endl;                                                   \
+        return { };                                                                             \
+    }                                                                                           \
+                                                                                                \
+    M_FrameVarName.M_FieldName = parse_result.value();                                          \
+}
+
+std::optional<Frame> parse_frame(char line[]) {
     char* fields[EXPECTED_FIELD_COUNT] = {};
     const int field_count = split_line(line, fields, EXPECTED_FIELD_COUNT);
-    (void)field_count;
 
-    Frame frame{};
-    frame.timestamp_ms = parse_long(fields[0]);
-    frame.seq = parse_int(fields[1]);
-    frame.voltage_v = parse_double(fields[2]);
-    frame.current_a = parse_double(fields[3]);
-    frame.temperature_c = parse_double(fields[4]);
-    frame.gps_fix = parse_int(fields[5]);
-    frame.satellites = parse_int(fields[6]);
+    if (field_count != EXPECTED_FIELD_COUNT) {
+        std::cerr << "Error: Frame expected " << EXPECTED_FIELD_COUNT
+                  << " fields, but got " << field_count << std::endl;
+        return { };
+    }
+
+    Frame frame{ };
+    
+    ParseFrameField(frame, timestamp_ms,  fields[0])
+    ParseFrameField(frame, seq,           fields[1])
+    ParseFrameField(frame, voltage_v,     fields[2])
+    ParseFrameField(frame, current_a,     fields[3])
+    ParseFrameField(frame, temperature_c, fields[4])
+    ParseFrameField(frame, gps_fix,       fields[5])
+    ParseFrameField(frame, satellites,    fields[6])
+    
     return frame;
 }
 
@@ -86,11 +123,11 @@ double compute_frame_rate_hz(const Frame frames[], int frame_count) {
     return static_cast<double>((frame_count - 1) * 1000 / elapsed_ms);
 }
 
-int read_frames(const char* path, Frame frames[], int max_frames) {
+std::optional<int> read_frames(const char* path, Frame frames[], int max_frames) {
     std::ifstream input{path};
     if (!input) {
-        std::cerr << "error: failed to open input file: " << path << '\n';
-        return 0;
+        std::cerr << "Error: Failed to open input file: " << path << std::endl;
+        return std::optional<int>{ };
     }
 
     int frame_count = 0;
@@ -101,13 +138,114 @@ int read_frames(const char* path, Frame frames[], int max_frames) {
             continue;
         }
 
-        if (frame_count < max_frames) {
-            frames[frame_count] = parse_frame(line);
-            ++frame_count;
+        if (frame_count >= max_frames) {
+            std::cerr << "Error: Lines count is more then maximum supported " << max_frames << std::endl;
+            return { };
+        }
+        
+        const std::optional<Frame> frame = parse_frame(line);
+        if (!frame) {
+            std::cerr << "Error: Malformed frame found at index: " << frame_count << std::endl;
+            return { };
+        }
+
+        frames[frame_count] = frame.value();
+        ++frame_count;
+    }
+
+    if (frame_count == 0) {
+        std::cerr << "Error: File contains no frames" << std::endl;
+        return { };
+    }
+
+    return { frame_count };
+}
+
+bool validate_frames(const Frame frames[], int frame_count) {
+    if (frame_count <= 0) {
+        std::cerr << "Error: No frames passed for validation" << std::endl;
+        return false;
+    }
+
+    //timestamp_ms check
+    long last_time_stamp = frames[0].timestamp_ms;
+    for (int i = 1; i < frame_count; ++i) {
+        const long current_time_stamp = frames[i].timestamp_ms;
+
+        const bool is_valid_time_stamp = (last_time_stamp < current_time_stamp);
+        if (!is_valid_time_stamp) {
+            std::cerr << "Error: Time stamp of frame with index " << i << " is invalid:" <<
+            " less or equal than previous frame" << std::endl;
+            return false;
+        }
+
+        last_time_stamp = current_time_stamp;
+    }
+
+    //seq check
+    int last_seq = frames[0].seq;
+    for (int i = 1; i < frame_count; ++i) {
+        const int current_seq = frames[i].seq;
+
+        const bool is_valid_seq = (current_seq == last_seq + 1);
+        if (!is_valid_seq) {
+            std::cerr << "Error: Sequence number of frame with index " << i <<
+               " is not increased by 1" << std::endl;
+            return false;
+        }
+
+        last_seq = current_seq;
+    }
+
+    //voltage_v check
+    for (int i = 0; i < frame_count; ++i) {
+        const double voltage_v = frames[i].voltage_v;
+
+        const bool is_valid_voltage = (voltage_v > 0.f);
+        if (!is_valid_voltage) {
+            std::cerr << "Error: Voltage value of frame with index " << i <<
+               " is less then zero" << std::endl;
+            return false;
         }
     }
 
-    return frame_count;
+    //temperature_c check
+    for (int i = 0; i < frame_count; ++i) {
+        const double temperature_c = frames[i].temperature_c;
+        
+        const bool is_valid_temperature = (temperature_c >= -40.f) && (temperature_c <= 120.f);
+        if (!is_valid_temperature) {
+            std::cerr << "Error: Temperature value of frame with index " << i <<
+               " is out of range [-40, 120]" << std::endl;
+            return false;
+        }
+    }
+
+    //gps_fix check
+    for (int i = 0; i < frame_count; ++i) {
+        const int gps_fix = frames[i].gps_fix;
+
+        const bool is_valid_gps_fix = (gps_fix == 0) || (gps_fix == 1);
+        if (!is_valid_gps_fix) {
+            std::cerr << "Error: GPS fix value of frame with index " << i <<
+               " is not equals to 0 or 1" << std::endl;
+            return false;
+        }
+    }
+
+    //satellites check
+    for (int i = 0; i < frame_count; ++i) {
+        const int satellites = frames[i].satellites;
+        
+        const bool is_valid_satellites = (satellites >= 0);
+        if (!is_valid_satellites) {
+            std::cerr << "Error: Satellites value of frame with index " << i <<
+               " is less then zero" << std::endl;
+            return false;
+        }
+    }
+
+    return true;
 }
 
 Summary summarize(const Frame frames[], int frame_count) {
@@ -143,11 +281,11 @@ Summary summarize(const Frame frames[], int frame_count) {
 }
 
 void print_summary(const Summary& summary) {
-    std::cout << "frames_total " << summary.frames_total << '\n';
-    std::cout << "frames_valid " << summary.frames_valid << '\n';
-    std::cout << "voltage_min " << summary.voltage_min << '\n';
-    std::cout << "voltage_max " << summary.voltage_max << '\n';
-    std::cout << "temperature_avg " << summary.temperature_avg << '\n';
-    std::cout << "low_voltage_frames " << summary.low_voltage_frames << '\n';
-    std::cout << "frame_rate_hz " << summary.frame_rate_hz << '\n';
+    std::cout << "frames_total " << summary.frames_total << std::endl;
+    std::cout << "frames_valid " << summary.frames_valid << std::endl;
+    std::cout << "voltage_min " << summary.voltage_min << std::endl;
+    std::cout << "voltage_max " << summary.voltage_max << std::endl;
+    std::cout << "temperature_avg " << summary.temperature_avg << std::endl;
+    std::cout << "low_voltage_frames " << summary.low_voltage_frames << std::endl;
+    std::cout << "frame_rate_hz " << summary.frame_rate_hz << std::endl;
 }

@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug telemetry_check",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/telemetry_check",
+            "args": [
+                "${workspaceFolder}/data/good.txt"
+            ],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "stopAtEntry": false
+        }
+    ]
+}
