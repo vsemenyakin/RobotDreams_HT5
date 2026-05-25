@@ -201,7 +201,7 @@ bool validate_frames(const Frame frames[], int frame_count) {
     for (int i = 0; i < frame_count; ++i) {
         const double voltage_v = frames[i].voltage_v;
 
-        const bool is_valid_voltage = (voltage_v >= 0.f);
+        const bool is_valid_voltage = (voltage_v > 0.f);
         if (!is_valid_voltage) {
             std::cerr << "Error: Voltage value of frame with index " << i <<
                " is less then zero" << std::endl;
