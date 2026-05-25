@@ -3,9 +3,9 @@
     "configurations": [
         {
             "name": "Debug telemetry_check",
-            "type": "cppvsdbg",
+            "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Debug/telemetry_check.exe",
+            "program": "${workspaceFolder}/build/telemetry_check",
             "args": [
                 "${workspaceFolder}/data/good.txt"
             ],
