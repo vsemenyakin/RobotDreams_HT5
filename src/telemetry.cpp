@@ -50,6 +50,10 @@ std::optional<long> parse<long>(const char* text) {
         return { };
     }
 
+    if (*end != '\0') {
+        return { };
+    }
+
     return { value };
 }
 
@@ -67,6 +71,10 @@ std::optional<double> parse<double>(const char* text) {
     const double value = std::strtod(text, &end);
 
     if (end == text) {
+        return { };
+    }
+
+    if (*end != '\0') {
         return { };
     }
 
